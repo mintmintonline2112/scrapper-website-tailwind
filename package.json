@@ -5,7 +5,8 @@
   "type": "module",
   "description": "DOM/CSS reference scraper + screenshot capture for UI rebuild",
   "scripts": {
-    "capture": "tsx src/index.ts"
+    "capture": "tsx src/index.ts",
+    "test": "node --import tsx --test src/tokens.test.ts"
   },
   "dependencies": {
     "fs-extra": "^11.2.0",

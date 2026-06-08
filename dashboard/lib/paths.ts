@@ -20,13 +20,17 @@ export function slugFromUrl(rawUrl: string): string {
   return slug || "site";
 }
 
+/** True nếu `child` nằm trong (hoặc đúng bằng) thư mục `parent`. Chặn lỗi prefix
+ *  kiểu "/out/foo" khớp nhầm "/out/foobar" — phải khớp ranh giới separator. */
+function isInside(parent: string, child: string): boolean {
+  return child === parent || child.startsWith(parent + path.sep);
+}
+
 /** Thư mục output của một slug, đã chặn path traversal. */
 export function outputDir(slug: string): string {
-  const dir = path.join(OUTPUT_ROOT, slug);
-  const resolved = path.resolve(dir);
-  if (!resolved.startsWith(path.resolve(OUTPUT_ROOT))) {
-    throw new Error("Invalid slug");
-  }
+  const root = path.resolve(OUTPUT_ROOT);
+  const resolved = path.resolve(root, slug);
+  if (!isInside(root, resolved)) throw new Error("Invalid slug");
   return resolved;
 }
 
@@ -34,6 +38,6 @@ export function outputDir(slug: string): string {
 export function safeFile(slug: string, rel: string): string {
   const base = outputDir(slug);
   const resolved = path.resolve(base, rel);
-  if (!resolved.startsWith(base)) throw new Error("Invalid path");
+  if (!isInside(base, resolved)) throw new Error("Invalid path");
   return resolved;
 }

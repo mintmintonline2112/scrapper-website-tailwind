@@ -7,6 +7,12 @@ export const dynamic = "force-dynamic";
 
 const MIME: Record<string, string> = {
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".avif": "image/avif",
   ".json": "application/json",
   ".md": "text/markdown; charset=utf-8",
   ".html": "text/html; charset=utf-8",

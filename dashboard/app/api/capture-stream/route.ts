@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { NextRequest } from "next/server";
 import { REPO_ROOT, normalizeUrl, slugFromUrl } from "@/lib/paths";
 import { readResult } from "@/lib/read-result";
-import { slugFromOutput } from "../capture/route";
+import { slugFromOutput } from "@/lib/cli";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

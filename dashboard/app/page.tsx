@@ -10,8 +10,16 @@ interface Palette {
   border: string;
   all: { hex: string; weight: number }[];
 }
+interface SimplePalette {
+  background: string;
+  text: string;
+  primary: string;
+  accent: string;
+  border: string;
+}
 interface Tokens {
   palette: Palette;
+  darkPalette?: SimplePalette;
   spacingScale: number[];
   typeScale: number[];
   radiusScale: number[];
@@ -19,6 +27,13 @@ interface Tokens {
   fontWeights: number[];
   layout: { containerMaxWidth: string; commonGridColumns: string[] };
   tailwindHints: Record<string, string>;
+}
+interface A11y {
+  score: number;
+  contrast: { checked: number; failed: number };
+  images: { total: number; missingAlt: number };
+  headings: { h1Count: number; skips: string[] };
+  controls: { unnamedButtons: number; unnamedLinks: number };
 }
 interface CaptureResult {
   slug: string;
@@ -35,8 +50,10 @@ interface CaptureResult {
   components: { components: { name: string; role: string; contains: string[] }[] } | null;
   rebuildBrief: string | null;
   aiPrompt: string | null;
+  accessibility: A11y | null;
   screenshots: string[];
   rebuildFiles: string[];
+  rebuildHtmlFiles: string[];
 }
 interface HistoryItem {
   slug: string;
@@ -57,6 +74,12 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [copied, setCopied] = useState(false);
   const [openFile, setOpenFile] = useState<{ name: string; content: string } | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [previewDark, setPreviewDark] = useState(false);
+  const [previewW, setPreviewW] = useState<number>(0); // 0 = full
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"react" | "html">("react");
+  const [claudeCopied, setClaudeCopied] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -84,6 +107,7 @@ export default function Home() {
     setError(null);
     setResult(null);
     setOpenFile(null);
+    setPreview(null);
     setLogs([]);
     try {
       const res = await fetch("/api/capture-stream", {
@@ -120,6 +144,7 @@ export default function Home() {
   async function loadExisting(slug: string) {
     setError(null);
     setOpenFile(null);
+    setPreview(null);
     setLogs([]);
     try {
       const res = await fetch(`/api/result?slug=${encodeURIComponent(slug)}`);
@@ -141,9 +166,61 @@ export default function Home() {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  async function viewFile(rel: string) {
-    const res = await fetch(fileUrl(`rebuild/${rel}`));
+  async function viewFile(rel: string, dir = "rebuild") {
+    const res = await fetch(fileUrl(`${dir}/${rel}`));
     setOpenFile({ name: rel, content: await res.text() });
+  }
+
+  /** Copy ai-prompt vào clipboard rồi mở Claude.ai để dán — không tốn API. */
+  async function copyAndOpenClaude() {
+    if (result?.aiPrompt) {
+      try {
+        await navigator.clipboard.writeText(result.aiPrompt);
+        setClaudeCopied(true);
+        setTimeout(() => setClaudeCopied(false), 4000);
+      } catch {
+        /* clipboard bị chặn — vẫn mở tab */
+      }
+    }
+    window.open("https://claude.ai/new", "_blank", "noopener,noreferrer");
+  }
+
+  async function loadPreview(mode: "react" | "html") {
+    if (!result) return;
+    setPreviewLoading(true);
+    setPreviewMode(mode);
+    try {
+      let html: string;
+      if (mode === "react") {
+        const res = await fetch(fileUrl("rebuild/preview.html"));
+        if (!res.ok) throw new Error("Chưa có preview.html");
+        html = await res.text();
+        const base = `/api/file?slug=${result.slug}&path=rebuild%2Fpublic%2Fimages%2F`;
+        html = html.split('src="public/images/').join(`src="${base}`);
+      } else {
+        // bản vanilla: gộp CSS/JS vào srcDoc (iframe không có base để load file rời),
+        // ảnh assets/ trỏ về API file.
+        const [idx, css, js] = await Promise.all([
+          fetch(fileUrl("rebuild-html/index.html")).then((r) => {
+            if (!r.ok) throw new Error("Chưa có rebuild-html/index.html");
+            return r.text();
+          }),
+          fetch(fileUrl("rebuild-html/styles.css")).then((r) => (r.ok ? r.text() : "")),
+          fetch(fileUrl("rebuild-html/script.js")).then((r) => (r.ok ? r.text() : "")),
+        ]);
+        const base = `/api/file?slug=${result.slug}&path=rebuild-html%2Fassets%2F`;
+        html = idx
+          .replace('<link rel="stylesheet" href="styles.css">', `<style>${css}</style>`)
+          .replace('<script src="script.js"></script>', `<script>${js}</script>`)
+          .split('src="assets/')
+          .join(`src="${base}`);
+      }
+      setPreview(html);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPreviewLoading(false);
+    }
   }
 
   return (
@@ -218,6 +295,7 @@ export default function Home() {
                 <a href={fileUrl("analysis/rebuild-brief.md", true)} className="btn">Brief.md</a>
                 <a href={fileUrl("analysis/design-tokens.json", true)} className="btn">tokens.json</a>
                 <a href={fileUrl("analysis/ai-prompt.md", true)} className="btn">ai-prompt.md</a>
+                <a href={fileUrl("analysis/accessibility.md", true)} className="btn">a11y.md</a>
                 <a href={`/api/zip?slug=${result.slug}`} className="btn btn-primary">⬇ ZIP</a>
               </div>
             </div>
@@ -253,6 +331,83 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Live preview */}
+            {result.rebuildFiles?.includes("preview.html") && (
+              <div>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <h3 className="mr-2 text-lg font-semibold">Live preview</h3>
+                  <button
+                    onClick={() => loadPreview("react")}
+                    className={`btn ${preview && previewMode === "react" ? "btn-primary" : ""}`}
+                  >
+                    {previewLoading && previewMode === "react" ? "Đang tải…" : "React (Next)"}
+                  </button>
+                  {result.rebuildHtmlFiles?.includes("index.html") && (
+                    <button
+                      onClick={() => loadPreview("html")}
+                      className={`btn ${preview && previewMode === "html" ? "btn-primary" : ""}`}
+                    >
+                      {previewLoading && previewMode === "html" ? "Đang tải…" : "HTML (vanilla)"}
+                    </button>
+                  )}
+                  {preview && (
+                    <>
+                      <button
+                        onClick={() => setPreviewDark((v) => !v)}
+                        className="btn"
+                      >
+                        {previewDark ? "☾ Dark" : "☀ Light"}
+                      </button>
+                      <span className="ml-2 flex gap-1">
+                        {[
+                          { label: "Full", w: 0 },
+                          { label: "1440", w: 1440 },
+                          { label: "768", w: 768 },
+                          { label: "390", w: 390 },
+                        ].map((o) => (
+                          <button
+                            key={o.w}
+                            onClick={() => setPreviewW(o.w)}
+                            className={`rounded-md px-2.5 py-1.5 text-xs ${
+                              previewW === o.w ? "bg-white text-neutral-900" : "bg-neutral-800 text-neutral-300"
+                            }`}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </div>
+                {preview ? (
+                  <div className="overflow-auto rounded-xl border border-neutral-800 bg-white">
+                    <iframe
+                      title="preview"
+                      sandbox="allow-scripts"
+                      srcDoc={
+                        previewDark
+                          ? previewMode === "html"
+                            ? preview.replace("<html ", '<html data-theme="dark" ')
+                            : preview.replace("<html lang=", '<html class="dark" lang=')
+                          : preview
+                      }
+                      style={{
+                        width: previewW ? `${previewW}px` : "100%",
+                        height: 720,
+                        border: 0,
+                        display: "block",
+                        margin: previewW ? "0 auto" : undefined,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <p className="text-sm text-neutral-500">
+                    Chọn <b>React (Next)</b> hoặc <b>HTML (vanilla)</b> để xem trang rebuild ngay tại đây — không cần dựng app.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Palette + tokens */}
             {result.tokens && (
               <div>
@@ -275,6 +430,50 @@ export default function Home() {
                   <TokenRow label="Fonts" value={result.tokens.fonts.join(", ") || "—"} />
                   <TokenRow label="Container" value={result.tokens.layout.containerMaxWidth} />
                   <TokenRow label="Tailwind primary" value={result.tokens.tailwindHints.primary} />
+                </div>
+                {result.tokens.darkPalette && (
+                  <div className="mt-4">
+                    <div className="mb-2 text-sm text-neutral-400">Dark mode palette (đo từ prefers-color-scheme)</div>
+                    <div className="flex flex-wrap gap-3">
+                      {Object.entries({
+                        background: result.tokens.darkPalette.background,
+                        text: result.tokens.darkPalette.text,
+                        primary: result.tokens.darkPalette.primary,
+                        accent: result.tokens.darkPalette.accent,
+                        border: result.tokens.darkPalette.border,
+                      }).map(([role, hex]) => (
+                        <Swatch key={role} role={role} hex={hex} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Accessibility audit (trang gốc) */}
+            {result.accessibility && (
+              <div>
+                <h3 className="mb-3 text-lg font-semibold">Accessibility (trang gốc)</h3>
+                <div className="flex flex-wrap items-center gap-4">
+                  <ScoreRing score={result.accessibility.score} />
+                  <div className="grid flex-1 gap-2 text-sm sm:grid-cols-2">
+                    <TokenRow
+                      label="Contrast fail"
+                      value={`${result.accessibility.contrast.failed} / ${result.accessibility.contrast.checked}`}
+                    />
+                    <TokenRow
+                      label="Ảnh thiếu alt"
+                      value={`${result.accessibility.images.missingAlt} / ${result.accessibility.images.total}`}
+                    />
+                    <TokenRow label="Số h1" value={String(result.accessibility.headings.h1Count)} />
+                    <TokenRow
+                      label="Control vô danh"
+                      value={String(
+                        result.accessibility.controls.unnamedButtons +
+                          result.accessibility.controls.unnamedLinks
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -328,6 +527,32 @@ export default function Home() {
               </div>
             )}
 
+            {/* Generated code — bản vanilla HTML/CSS/JS */}
+            {result.rebuildHtmlFiles && result.rebuildHtmlFiles.length > 0 && (
+              <div>
+                <div className="mb-3 flex flex-wrap items-center gap-3">
+                  <h3 className="text-lg font-semibold">
+                    Code sinh ra · rebuild-html/ ({result.rebuildHtmlFiles.length} files)
+                  </h3>
+                  <a href={fileUrl("rebuild-html/index.html", true)} className="btn">⬇ index.html</a>
+                  <span className="text-xs text-neutral-500">Mở thẳng index.html bằng trình duyệt — không cần build.</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {result.rebuildHtmlFiles
+                    .filter((f) => !f.startsWith("assets/"))
+                    .map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => viewFile(f, "rebuild-html")}
+                        className="rounded-md border border-neutral-800 bg-neutral-900/50 px-2.5 py-1.5 font-mono text-xs text-neutral-300 hover:bg-neutral-800"
+                      >
+                        {f}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+
             {/* AI prompt with copy */}
             {result.aiPrompt && (
               <div className="rounded-xl border border-neutral-800 bg-neutral-900/50">
@@ -338,6 +563,28 @@ export default function Home() {
                 <pre className="max-h-[400px] overflow-auto border-t border-neutral-800 p-5 text-xs text-neutral-300">
                   {result.aiPrompt}
                 </pre>
+              </div>
+            )}
+
+            {/* Generate bằng Claude.ai (miễn phí — dùng gói chat sẵn có, không cần API) */}
+            {result.aiPrompt && (
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900/50">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+                  <div>
+                    <h3 className="font-semibold">✨ Sinh trang hoàn chỉnh bằng Claude.ai</h3>
+                    <p className="text-xs text-neutral-500">
+                      Copy ai-prompt rồi mở Claude.ai, dán (Ctrl+V) vào khung chat — dùng gói sẵn có, không tốn API.
+                    </p>
+                  </div>
+                  <button onClick={copyAndOpenClaude} className="btn btn-primary">
+                    Copy prompt &amp; mở Claude.ai →
+                  </button>
+                </div>
+                {claudeCopied && (
+                  <p className="border-t border-neutral-800 px-5 py-2 text-xs text-green-400">
+                    ✓ Đã copy prompt vào clipboard — sang tab Claude.ai vừa mở và dán (Ctrl+V) vào khung chat.
+                  </p>
+                )}
               </div>
             )}
 
@@ -372,6 +619,20 @@ function Swatch({ role, hex }: { role: string; hex: string }) {
         <div className="capitalize text-neutral-400">{role}</div>
         <div className="font-mono">{hex}</div>
       </div>
+    </div>
+  );
+}
+
+function ScoreRing({ score }: { score: number }) {
+  const color = score >= 90 ? "#22c55e" : score >= 70 ? "#eab308" : "#ef4444";
+  return (
+    <div
+      className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-xl font-bold"
+      style={{ background: `conic-gradient(${color} ${score * 3.6}deg, #262626 0deg)` }}
+    >
+      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-950">
+        {score}
+      </span>
     </div>
   );
 }

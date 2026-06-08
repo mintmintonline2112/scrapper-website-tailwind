@@ -53,6 +53,80 @@ export async function autoScroll(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
+/**
+ * Cố gắng đóng cookie/consent banner & modal phủ màn trước khi chụp/đo.
+ * Hai bước: (1) bấm nút "Accept/Đồng ý/OK…" của các CMP phổ biến,
+ * (2) gỡ phần tử overlay fixed còn sót + bỏ scroll-lock trên body.
+ * Banner làm sai lệch nặng cả screenshot lẫn thống kê màu, nên đáng làm sớm.
+ */
+export async function dismissOverlays(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      const clean = (s: string | null | undefined) =>
+        (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+
+      // (1) bấm nút chấp nhận — đa ngôn ngữ, khớp cả text lẫn aria-label
+      const ACCEPT =
+        /^(accept all|accept|agree|i agree|allow all|allow|got it|ok|okay|continue|đồng ý|chấp nhận|tôi đồng ý|accepter|akzeptieren|aceptar|aceitar|同意|同意する)$/i;
+      const clickables = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'button, [role="button"], a, input[type="button"], input[type="submit"]'
+        )
+      );
+      for (const el of clickables) {
+        const label = clean(el.textContent) || clean(el.getAttribute("aria-label")) ||
+          clean((el as HTMLInputElement).value);
+        if (label && ACCEPT.test(label)) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            el.click();
+            break;
+          }
+        }
+      }
+
+      // (2) gỡ overlay còn sót: CMP có id/class quen thuộc + phần tử fixed phủ lớn
+      const SELECTORS = [
+        '[id*="onetrust" i]', '[class*="onetrust" i]',
+        '[id*="cookiebot" i]', '[id*="cookie" i]', '[class*="cookie" i]',
+        '[class*="consent" i]', '[id*="consent" i]',
+        '[id*="didomi" i]', '[id*="usercentrics" i]', '[class*="cmp" i]',
+        '[aria-modal="true"]', ".modal-backdrop", "#gdpr", "[data-testid*='cookie' i]",
+      ];
+      const kill = new Set<Element>();
+      for (const sel of SELECTORS) {
+        try {
+          document.querySelectorAll(sel).forEach((e) => kill.add(e));
+        } catch {
+          /* selector không hợp lệ trên engine cũ */
+        }
+      }
+      // phần tử fixed/sticky phủ phần lớn viewport (backdrop modal vô danh)
+      document.querySelectorAll<HTMLElement>("body *").forEach((el) => {
+        const cs = getComputedStyle(el);
+        if (cs.position !== "fixed" && cs.position !== "sticky") return;
+        const r = el.getBoundingClientRect();
+        const coversMost =
+          r.width >= window.innerWidth * 0.6 && r.height >= window.innerHeight * 0.6;
+        const z = parseInt(cs.zIndex, 10);
+        if (coversMost && (z > 1000 || cs.position === "fixed")) {
+          const txt = clean(el.textContent);
+          if (/cookie|consent|gdpr|privacy|subscribe|newsletter/.test(txt) || txt.length < 4)
+            kill.add(el);
+        }
+      });
+      kill.forEach((e) => e.remove());
+
+      // bỏ scroll-lock mà modal hay đặt
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    });
+    await page.waitForTimeout(250);
+  } catch {
+    /* không chặn pipeline nếu trang lạ */
+  }
+}
+
 /** Mở trang trong 1 viewport, chờ ổn định, auto-scroll. Trả về page (caller tự đóng context). */
 export async function openStablePage(
   browser: Browser,
@@ -80,29 +154,42 @@ export async function openStablePage(
   } catch {
     /* bỏ qua: trang vẫn dùng được */
   }
+  await dismissOverlays(page);
   await autoScroll(page);
   return page;
 }
 
-/** Chụp full-page + above-the-fold cho mọi viewport. */
-export async function captureScreenshots(
+/** Chụp full-page + above-the-fold cho một page đã mở & ổn định sẵn. */
+export async function screenshotPage(
+  page: Page,
+  name: string,
+  paths: CapturePaths
+): Promise<void> {
+  await fs.ensureDir(paths.screenshots);
+  await page.screenshot({
+    path: `${paths.screenshots}/${name}-full.png`,
+    fullPage: true,
+  });
+  await page.screenshot({
+    path: `${paths.screenshots}/${name}-above-fold.png`,
+    fullPage: false,
+  });
+  console.log(`  ✓ screenshot ${name} (full + above-fold)`);
+}
+
+/**
+ * Chụp screenshot cho các viewport KHÔNG phải desktop (mỗi cái 1 page riêng).
+ * Desktop được xử lý riêng ở run.ts để tái dùng cùng page cho cả scrape → bớt 1 lần load.
+ */
+export async function captureNonDesktopScreenshots(
   browser: Browser,
   url: string,
   paths: CapturePaths
 ): Promise<void> {
-  await fs.ensureDir(paths.screenshots);
-  for (const vp of viewports) {
+  for (const vp of viewports.filter((v) => v.name !== "desktop")) {
     const page = await openStablePage(browser, url, vp);
     try {
-      await page.screenshot({
-        path: `${paths.screenshots}/${vp.name}-full.png`,
-        fullPage: true,
-      });
-      await page.screenshot({
-        path: `${paths.screenshots}/${vp.name}-above-fold.png`,
-        fullPage: false,
-      });
-      console.log(`  ✓ screenshot ${vp.name} (full + above-fold)`);
+      await screenshotPage(page, vp.name, paths);
     } finally {
       await page.context().close();
     }

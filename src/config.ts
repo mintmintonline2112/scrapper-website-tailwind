@@ -42,7 +42,10 @@ export function buildPaths(slug: string) {
     rebuildBrief: path.join(base, "analysis", "rebuild-brief.md"),
     components: path.join(base, "analysis", "components.json"),
     aiPrompt: path.join(base, "analysis", "ai-prompt.md"),
+    accessibility: path.join(base, "analysis", "accessibility.json"),
+    accessibilityReport: path.join(base, "analysis", "accessibility.md"),
     rebuildDir: path.join(base, "rebuild"),
+    rebuildHtmlDir: path.join(base, "rebuild-html"),
   };
 }
 

@@ -58,7 +58,9 @@ export async function readResult(slug: string) {
     components: await readJson(a("components.json")),
     rebuildBrief: await readText(a("rebuild-brief.md")),
     aiPrompt: await readText(a("ai-prompt.md")),
+    accessibility: await readJson(a("accessibility.json")),
     screenshots: SCREENSHOTS,
     rebuildFiles: await listRebuild(path.join(dir, "rebuild")),
+    rebuildHtmlFiles: await listRebuild(path.join(dir, "rebuild-html")),
   };
 }

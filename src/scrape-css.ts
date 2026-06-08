@@ -219,3 +219,60 @@ export async function scrapeCss(
   );
   return raw as RawTokens;
 }
+
+/** Chỉ 4 nhóm màu (text/bg/accent/border) — để đo lại palette ở chế độ dark. */
+export interface ColorScheme {
+  textColors: FreqMap;
+  backgrounds: FreqMap;
+  accents: FreqMap;
+  borders: FreqMap;
+}
+
+/**
+ * Đo lại MÀU sau khi emulateMedia({colorScheme:"dark"}) — KHÔNG reload trang nên rất nhanh.
+ * Trang có dark mode (qua prefers-color-scheme) sẽ trả palette khác hẳn light.
+ */
+export async function scrapeColorScheme(page: Page): Promise<ColorScheme> {
+  return page.evaluate(() => {
+    const SELECTORS = ["body", "header", "footer", "main", "section", "nav", "h1", "h2", "h3", "p", "a", "button", '[role="button"]', "li", "div"];
+    const bump = (m: Record<string, number>, k: string, w = 1) => { if (k) m[k] = (m[k] ?? 0) + w; };
+    const _cv = document.createElement("canvas");
+    _cv.width = _cv.height = 1;
+    const _cx = _cv.getContext("2d", { willReadFrequently: true })!;
+    const cache = new Map<string, string>();
+    const normColor = (c: string): string => {
+      if (!c || c === "transparent" || c === "none") return "";
+      const hit = cache.get(c);
+      if (hit !== undefined) return hit;
+      _cx.clearRect(0, 0, 1, 1);
+      _cx.fillStyle = "#000";
+      _cx.fillStyle = c;
+      _cx.fillRect(0, 0, 1, 1);
+      const d = _cx.getImageData(0, 0, 1, 1).data;
+      const out = d[3] < 25 ? "" : `rgb(${d[0]}, ${d[1]}, ${d[2]})`;
+      cache.set(c, out);
+      return out;
+    };
+    const textColors: Record<string, number> = {};
+    const backgrounds: Record<string, number> = {};
+    const accents: Record<string, number> = {};
+    const borders: Record<string, number> = {};
+    const all = Array.from(document.querySelectorAll(SELECTORS.join(","))).slice(0, 5000);
+    for (const el of all) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      const w = Math.max(1, Math.min(40, Math.round(Math.sqrt(rect.width * rect.height) / 30)));
+      const s = getComputedStyle(el);
+      bump(textColors, normColor(s.color), w);
+      bump(backgrounds, normColor(s.backgroundColor), w);
+      if (parseFloat(s.borderTopWidth) > 0) bump(borders, normColor(s.borderTopColor), w);
+      if (el.matches('button, [role="button"]') || el.tagName === "A") {
+        const bg = normColor(s.backgroundColor);
+        if (bg) bump(accents, bg, w * 6);
+        const fg = normColor(s.color);
+        if (fg) bump(accents, fg, w * 2);
+      }
+    }
+    return { textColors, backgrounds, accents, borders };
+  });
+}

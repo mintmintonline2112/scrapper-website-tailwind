@@ -1,16 +1,29 @@
 import fs from "fs-extra";
 import { CapturePaths } from "./config.js";
-import { FreqMap, RawTokens } from "./scrape-css.js";
+import { ColorScheme, FreqMap, RawTokens } from "./scrape-css.js";
+import {
+  RGB,
+  colorDist,
+  luminance,
+  parseColor,
+  saturation,
+  toHex,
+} from "./color-utils.js";
+
+export interface SimplePalette {
+  background: string;
+  text: string;
+  primary: string;
+  accent: string;
+  border: string;
+}
 
 export interface DesignTokens {
-  palette: {
-    background: string;
-    text: string;
-    primary: string;
-    accent: string;
-    border: string;
+  palette: SimplePalette & {
     all: { hex: string; weight: number }[];
   };
+  /** Palette ở chế độ dark (chỉ có khi site thật sự hỗ trợ prefers-color-scheme:dark). */
+  darkPalette?: SimplePalette;
   spacingScale: number[];
   typeScale: number[];
   radiusScale: number[];
@@ -29,51 +42,6 @@ export interface DesignTokens {
     containerMaxWidth: string;
     sectionPadding: string;
   };
-}
-
-interface RGB {
-  r: number;
-  g: number;
-  b: number;
-}
-
-// ---------- color helpers ----------
-
-function parseColor(c: string): RGB | null {
-  const m = c.match(/rgba?\(([^)]+)\)/);
-  if (!m) return null;
-  const parts = m[1].split(",").map((p) => parseFloat(p.trim()));
-  const [r, g, b, a] = parts;
-  if (a !== undefined && a < 0.1) return null; // gần như trong suốt
-  return { r, g, b };
-}
-
-function toHex({ r, g, b }: RGB): string {
-  const h = (n: number) =>
-    Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
-  return `#${h(r)}${h(g)}${h(b)}`;
-}
-
-/** Khoảng cách màu "redmean" — xấp xỉ cảm nhận mắt người, đủ tốt để gom cụm. */
-function colorDist(a: RGB, b: RGB): number {
-  const rm = (a.r + b.r) / 2;
-  const dr = a.r - b.r;
-  const dg = a.g - b.g;
-  const db = a.b - b.b;
-  return Math.sqrt(
-    (2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db
-  );
-}
-
-function luminance({ r, g, b }: RGB): number {
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255; // 0 (đen) .. 1 (trắng)
-}
-
-function saturation({ r, g, b }: RGB): number {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  if (max === 0) return 0;
-  return (max - min) / max;
 }
 
 interface ColorCluster {
@@ -113,7 +81,7 @@ function clusterColors(freq: FreqMap, threshold = 32): ColorCluster[] {
 // ---------- numeric scale helpers ----------
 
 /** Gom px về scale chuẩn gần nhất, giữ top N theo tần suất. */
-function clusterScale(freq: FreqMap, candidates: number[], keep: number): number[] {
+export function clusterScale(freq: FreqMap, candidates: number[], keep: number): number[] {
   const snapped: Record<number, number> = {};
   for (const [val, w] of Object.entries(freq)) {
     const n = parseFloat(val);
@@ -157,7 +125,7 @@ const TAILWIND_COLORS: Record<string, string> = {
   "#ec4899": "pink-500", "#2563eb": "blue-600", "#1d4ed8": "blue-700",
 };
 
-function nearestTailwind(hex: string): string {
+export function nearestTailwind(hex: string): string {
   const target = parseColor(
     `rgb(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)})`
   );
@@ -220,65 +188,97 @@ function dominantSectionPad(freq: FreqMap): number {
   return ranked[0]?.v ?? 48;
 }
 
-// ---------- main ----------
+// ---------- palette picking (dùng chung cho light & dark) ----------
 
-export async function clusterTokens(
-  raw: RawTokens,
-  paths: CapturePaths
-): Promise<DesignTokens> {
-  // ---- colors ----
-  const textClusters = clusterColors(raw.textColors).slice(0, 6);
-  const bgClusters = clusterColors(raw.backgrounds).slice(0, 6);
+interface PaletteRGB {
+  background: RGB;
+  text: RGB;
+  primary: RGB;
+  accent: RGB;
+  border: RGB;
+  all: ColorCluster[];
+}
 
-  // gộp tất cả để chọn primary/accent (màu bão hòa, không phải trắng/đen/xám)
-  const allClusters = clusterColors(
-    mergeFreq(raw.textColors, raw.backgrounds)
-  ).slice(0, 12);
+/** Chọn bg/text/primary/accent/border từ 4 nhóm màu. Dùng cho cả light lẫn dark scheme. */
+function pickPalette(
+  textColors: FreqMap,
+  backgrounds: FreqMap,
+  accents: FreqMap,
+  borders: FreqMap
+): PaletteRGB {
+  const textClusters = clusterColors(textColors).slice(0, 6);
+  const bgClusters = clusterColors(backgrounds).slice(0, 6);
+  const allClusters = clusterColors(mergeFreq(textColors, backgrounds)).slice(0, 12);
 
-  const background =
-    bgClusters.find((c) => luminance(c.center) > 0.6)?.center ??
-    bgClusters[0]?.center ??
-    { r: 255, g: 255, b: 255 };
-
+  // bg = cụm nền có trọng số lớn nhất (không ép sáng — để dark scheme ra nền tối đúng)
+  const background = bgClusters[0]?.center ?? { r: 255, g: 255, b: 255 };
+  const bgLum = luminance(background);
+  // text = cụm chữ tương phản tốt với nền (sáng↔tối ngược chiều bg)
   const text =
-    textClusters.find((c) => luminance(c.center) < 0.5)?.center ??
+    textClusters.find((c) =>
+      bgLum > 0.5 ? luminance(c.center) < 0.5 : luminance(c.center) > 0.5
+    )?.center ??
     textClusters[0]?.center ??
     { r: 17, g: 24, b: 39 };
 
   const isBrandy = (c: RGB) =>
     saturation(c) > 0.2 && luminance(c) > 0.1 && luminance(c) < 0.92;
-
-  // Điểm brand = trọng số × độ bão hoà: màu càng rực càng dễ là brand, kể cả khi
-  // một màu xám-xanh (text phụ) có tần suất cao hơn. Tránh chọn nhầm neutral.
   const brandScore = (cl: ColorCluster) => cl.weight * Math.pow(saturation(cl.center), 1.3);
 
-  // Ưu tiên màu brand từ CTA/link; chỉ rơi về màu chung khi CTA không có màu nổi bật.
-  const accentClusters = clusterColors(raw.accents)
+  const accentClusters = clusterColors(accents)
     .filter((c) => isBrandy(c.center))
     .sort((a, b) => brandScore(b) - brandScore(a));
-
   const generalSaturated = allClusters
     .filter((c) => isBrandy(c.center))
     .sort((a, b) => brandScore(b) - brandScore(a));
-
   const brandRanked = accentClusters.length ? accentClusters : generalSaturated;
 
   const primary = brandRanked[0]?.center ?? { r: 59, g: 130, b: 246 };
-  // accent: cụm brand kế tiếp đủ khác primary (tránh trùng sắc)
   const accent =
     brandRanked.slice(1).find((c) => colorDist(c.center, primary) > 40)?.center ??
     generalSaturated.find((c) => colorDist(c.center, primary) > 40)?.center ??
     primary;
 
-  // border: đọc màu border THẬT (đã thu ở scrape); fallback là xám nhạt gần bg.
-  const borderClusters = clusterColors(raw.borders);
+  const borderClusters = clusterColors(borders);
   const border =
     borderClusters[0]?.center ??
     bgClusters
       .map((c) => c.center)
-      .filter((c) => luminance(c) > 0.75 && luminance(c) < 0.98)
-      .sort((a, b) => luminance(a) - luminance(b))[0] ??
+      .filter((c) => Math.abs(luminance(c) - bgLum) > 0.05 && Math.abs(luminance(c) - bgLum) < 0.25)
+      .sort((a, b) => Math.abs(luminance(a) - bgLum) - Math.abs(luminance(b) - bgLum))[0] ??
     { r: 229, g: 231, b: 235 };
+
+  return { background, text, primary, accent, border, all: allClusters };
+}
+
+const toSimple = (p: PaletteRGB): SimplePalette => ({
+  background: toHex(p.background),
+  text: toHex(p.text),
+  primary: toHex(p.primary),
+  accent: toHex(p.accent),
+  border: toHex(p.border),
+});
+
+// ---------- main ----------
+
+export async function clusterTokens(
+  raw: RawTokens,
+  paths: CapturePaths,
+  darkColors?: ColorScheme
+): Promise<DesignTokens> {
+  // ---- colors (light) ----
+  const pal = pickPalette(raw.textColors, raw.backgrounds, raw.accents, raw.borders);
+  const { background, text, primary, accent, border, all: allClusters } = pal;
+
+  // ---- colors (dark) — chỉ giữ nếu site thật sự đổi nền khi prefers-color-scheme:dark ----
+  let darkPalette: SimplePalette | undefined;
+  if (darkColors) {
+    const dpal = pickPalette(darkColors.textColors, darkColors.backgrounds, darkColors.accents, darkColors.borders);
+    // khác biệt thật: nền dark phải tối hơn rõ rệt nền light
+    if (luminance(background) - luminance(dpal.background) > 0.25) {
+      darkPalette = toSimple(dpal);
+    }
+  }
 
   // ---- scales ----
   const spacingScale = clusterScale(raw.spacings, SPACING_CANDIDATES, 6);
@@ -322,6 +322,7 @@ export async function clusterTokens(
         weight: Math.round(c.weight),
       })),
     },
+    darkPalette,
     spacingScale,
     typeScale,
     radiusScale,
@@ -342,7 +343,8 @@ export async function clusterTokens(
   await fs.writeJSON(paths.tokens, tokens, { spaces: 2 });
   console.log(
     `  ✓ cluster: palette[bg ${tokens.palette.background}, text ${tokens.palette.text}, ` +
-      `primary ${tokens.palette.primary}], spacing[${spacingScale.join(",")}], type[${typeScale.join(",")}]`
+      `primary ${tokens.palette.primary}], spacing[${spacingScale.join(",")}], type[${typeScale.join(",")}]` +
+      (darkPalette ? `, dark bg ${darkPalette.background}` : "")
   );
   return tokens;
 }
