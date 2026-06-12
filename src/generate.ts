@@ -84,6 +84,10 @@ export async function generateComponents(
     if (role === "header" && headerDone) role = "content";
     if (role === "footer" && footerDone) role = "content";
     if (role === "content") {
+      // bỏ content section RỖNG (không heading, card, subtext, ảnh) → tránh "Placeholder section"
+      const empty =
+        !s.heading && !s.subtext && s.cards.length === 0 && s.images.length === 0;
+      if (empty) continue;
       if (contentCount >= MAX_CONTENT) continue;
       contentCount++;
     }
@@ -123,7 +127,14 @@ export async function generateComponents(
     );
   }
 
-  const tree: ComponentTree = { page: meta.title || meta.url, components };
+  // Header luôn đầu, Footer luôn cuối — bất kể vị trí 'top' đo được (header sticky/giữa trang).
+  const orderRank = (r: SectionRole) => (r === "header" ? 0 : r === "footer" ? 2 : 1);
+  const ordered = components
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => orderRank(a.c.role) - orderRank(b.c.role) || a.i - b.i)
+    .map((x) => x.c);
+
+  const tree: ComponentTree = { page: meta.title || meta.url, components: ordered };
   await fs.writeJSON(paths.components, tree, { spaces: 2 });
 
   await writeAiPrompt(meta, tokens, tree, paths);

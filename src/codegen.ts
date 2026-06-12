@@ -479,7 +479,7 @@ function renderComponent(
       <div className="${container(t)} grid items-center gap-12 md:grid-cols-2">
         <div>
           ${d.heading ? `<h2 className="text-3xl font-bold">${esc(d.heading)}</h2>` : ""}
-          <p className="mt-4 max-w-xl opacity-70">${esc(d.subtext || "Placeholder content section.")}</p>
+          ${d.subtext ? `<p className="mt-4 max-w-xl opacity-70">${esc(d.subtext)}</p>` : ""}
         </div>
         ${imgTag(heroImg, `h-auto w-full ${r} border border-[var(--color-border)]`)}
       </div>
@@ -490,7 +490,7 @@ function renderComponent(
         `<section className="${pad}">
       <div className="${container(t)} ${align}">
         ${d.heading ? `<h2 className="mb-6 text-3xl font-bold">${esc(d.heading)}</h2>` : ""}
-        <p className="max-w-2xl opacity-70">${esc(d.subtext || "Placeholder content section.")}</p>
+        ${d.subtext ? `<p className="max-w-2xl opacity-70">${esc(d.subtext)}</p>` : ""}
       </div>
     </section>`
       );

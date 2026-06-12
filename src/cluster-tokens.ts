@@ -123,6 +123,11 @@ const TAILWIND_COLORS: Record<string, string> = {
   "#14b8a6": "teal-500", "#06b6d4": "cyan-500", "#3b82f6": "blue-500",
   "#6366f1": "indigo-500", "#8b5cf6": "violet-500", "#a855f7": "purple-500",
   "#ec4899": "pink-500", "#2563eb": "blue-600", "#1d4ed8": "blue-700",
+  // dark blues / navy / slate — để màu brand tối (vd #1c3d71) không bị map nhầm sang gray
+  "#1e40af": "blue-800", "#1e3a8a": "blue-900", "#172554": "blue-950",
+  "#0c4a6e": "sky-900", "#075985": "sky-800",
+  "#334155": "slate-700", "#1e293b": "slate-800", "#0f172a": "slate-900",
+  "#3730a3": "indigo-800", "#312e81": "indigo-900",
 };
 
 export function nearestTailwind(hex: string): string {

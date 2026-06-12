@@ -254,14 +254,14 @@ function renderSection(c: ComponentNode, t: DesignTokens, meta: PageMetadata, im
       if (heroImg)
         return `<section class="section"${padStyle(d)}>
   <div class="container split">
-    <div>${d.heading ? `<h2>${esc(d.heading)}</h2>` : ""}<p class="muted">${esc(d.subtext || "Placeholder content section.")}</p></div>
+    <div>${d.heading ? `<h2>${esc(d.heading)}</h2>` : ""}${d.subtext ? `<p class="muted">${esc(d.subtext)}</p>` : ""}</div>
     ${imgTag(heroImg, "split-img")}
   </div>
 </section>`;
       return `<section class="section${alignClass}"${padStyle(d)}>
   <div class="container">
     ${d.heading ? `<h2 class="mb">${esc(d.heading)}</h2>` : ""}
-    <p class="muted">${esc(d.subtext || "Placeholder content section.")}</p>
+    ${d.subtext ? `<p class="muted">${esc(d.subtext)}</p>` : ""}
   </div>
 </section>`;
   }
