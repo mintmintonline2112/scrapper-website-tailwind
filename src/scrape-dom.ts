@@ -47,6 +47,8 @@ export interface CardInfo {
   text: string;
   hasIcon: boolean;
   hasImage: boolean;
+  /** ảnh thumbnail của card (nếu có) — để codegen render thật thay vì ô xám */
+  image?: ImageInfo;
 }
 
 /** Layout ĐO ĐƯỢC của section — để codegen sinh Tailwind khớp, không đoán. */
@@ -86,6 +88,11 @@ export interface SectionInfo {
   signals: SectionSignals;
   top: number;
   height: number;
+  width: number;
+  linkCount: number;
+  /** là thanh full-width mỏng trên cùng (ứng viên header div-based) */
+  isTopBar: boolean;
+  hasCopyright: boolean;
 }
 
 export interface CardGroup {
@@ -202,6 +209,7 @@ export async function scrapeDom(
       text: string;
       hasIcon: boolean;
       hasImage: boolean;
+      image?: { src: string; alt: string; width: number; height: number };
     } => {
       const h = child.querySelector("h1,h2,h3,h4,h5,h6,strong,b");
       let heading = h ? clean(h.textContent).slice(0, 80) : "";
@@ -219,7 +227,20 @@ export async function scrapeDom(
         return r.width > 0 && r.width <= 64;
       }) || !!child.querySelector('[class*="icon" i]');
       const hasImage = imgs.some((i) => i.getBoundingClientRect().width > 64);
-      return { heading, text, hasIcon, hasImage };
+      // thumbnail thật của card: <img> lớn nhất (bỏ icon nhỏ)
+      const thumb = Array.from(child.querySelectorAll("img"))
+        .map((im) => ({ im, r: im.getBoundingClientRect() }))
+        .filter((x) => x.r.width >= 48 && x.r.height >= 36)
+        .sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height)[0];
+      const image = thumb
+        ? {
+            src: thumb.im.currentSrc || thumb.im.src || "",
+            alt: clean(thumb.im.getAttribute("alt")),
+            width: Math.round(thumb.r.width),
+            height: Math.round(thumb.r.height),
+          }
+        : undefined;
+      return { heading, text, hasIcon, hasImage, image: image?.src ? image : undefined };
     };
 
     const bestCardGroup = (root: Element): {
@@ -377,15 +398,77 @@ export async function scrapeDom(
       .filter((i) => i.src && i.width > 1 && i.height > 1);
 
     // ===== sections =====
-    let sectionEls = Array.from(
-      document.querySelectorAll("header, main > section, body > section, section, footer")
-    );
-    sectionEls = sectionEls.filter((el, i, arr) => arr.indexOf(el) === i);
+    const vw = window.innerWidth;
+    // Bỏ element ẩn/modal (visibility:hidden, display:none, opacity≈0, aria-hidden, off-screen).
+    // → loại các share/filter modal bị nhận nhầm là <header>.
+    const isVisible = (el: Element): boolean => {
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.visibility === "collapse" || cs.display === "none")
+        return false;
+      if (parseFloat(cs.opacity || "1") < 0.05) return false;
+      if (el.closest('[aria-hidden="true"]')) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return false;
+      if (r.bottom < 0 || r.right < 0) return false;
+      return true;
+    };
+    const copyRe = /(©|copyright|bản quyền|all rights reserved)/i;
 
+    let sectionEls = Array.from(
+      document.querySelectorAll(
+        'header, [role="banner"], main > section, body > section, section, footer, [role="contentinfo"]'
+      )
+    ).filter((el, i, arr) => arr.indexOf(el) === i && isVisible(el));
+
+    // Header div-based: thanh full-width mỏng trên cùng có ≥3 link nav (nhiều site không dùng <header>).
+    const headerBar = (() => {
+      const cands = Array.from(document.querySelectorAll("div, nav")).filter((el) => {
+        if (!isVisible(el)) return false;
+        const r = el.getBoundingClientRect();
+        return (
+          r.top + window.scrollY < 140 &&
+          r.width >= vw * 0.8 &&
+          r.height >= 36 &&
+          r.height <= 170 &&
+          el.querySelectorAll("a").length >= 3
+        );
+      });
+      cands.sort((a, b) => {
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        return ra.top - rb.top || rb.width - ra.width; // trên cùng, ngoài cùng
+      });
+      return cands[0] ?? null;
+    })();
+    const hasVisibleHeaderLandmark = sectionEls.some(
+      (e) => e.tagName === "HEADER" || e.getAttribute("role") === "banner"
+    );
+    if (headerBar && !hasVisibleHeaderLandmark && !sectionEls.includes(headerBar)) {
+      sectionEls.unshift(headerBar);
+    }
+
+    // Footer div-based nếu không có <footer> hiển thị: block full-width dưới cùng có copyright + link.
+    if (!sectionEls.some((e) => e.tagName === "FOOTER")) {
+      const fcands = Array.from(document.querySelectorAll("div, footer")).filter((el) => {
+        if (!isVisible(el)) return false;
+        const r = el.getBoundingClientRect();
+        return (
+          r.width >= vw * 0.8 &&
+          r.height >= 80 &&
+          copyRe.test(el.textContent || "") &&
+          el.querySelectorAll("a").length >= 3
+        );
+      });
+      const footerBar = fcands[fcands.length - 1];
+      if (footerBar && !sectionEls.includes(footerBar)) sectionEls.push(footerBar);
+    }
+
+    // Bổ sung block lớn (hiển thị) nếu vẫn quá ít section thật.
     if (sectionEls.filter((e) => e.tagName === "SECTION").length < 2) {
       const host = document.querySelector("main") ?? document.body;
       if (host) {
         for (const child of Array.from(host.children)) {
+          if (!isVisible(child)) continue;
           const r = child.getBoundingClientRect();
           if (r.height > 240 && r.width > 320 && !sectionEls.includes(child)) {
             sectionEls.push(child);
@@ -401,6 +484,10 @@ export async function scrapeDom(
         const group = bestCardGroup(el);
         const layout = measureLayout(el, group.container);
         const signals = signalsFor(el, group.cards);
+        const top = Math.round(r.top + window.scrollY);
+        const linkCount = el.querySelectorAll("a").length;
+        const isTopBar =
+          top < 140 && r.width >= vw * 0.8 && r.height <= 170 && linkCount >= 3;
         return {
           tag: el.tagName.toLowerCase(),
           role: "" as string,
@@ -414,8 +501,12 @@ export async function scrapeDom(
           cards: group.cards,
           layout,
           signals,
-          top: Math.round(r.top + window.scrollY),
+          top,
           height: Math.round(r.height),
+          width: Math.round(r.width),
+          linkCount,
+          isTopBar,
+          hasCopyright: copyRe.test(clean(el.textContent).slice(0, 600)),
         };
       })
       .filter((s) => s.height > 40)
@@ -426,11 +517,14 @@ export async function scrapeDom(
 
   // ---- gán role section (ở Node) ----
   const ctaTextRe = /(get started|sign up|try|start|contact|book|demo|subscribe|join|buy)/i;
+  const lastIdx = raw.sections.length - 1;
   const sections: SectionInfo[] = raw.sections.map((s, index) => {
     const sig = s.signals;
     let role: SectionRole;
-    if (s.tag === "header") role = "header";
-    else if (s.tag === "footer") role = "footer";
+    // header/footer nhận theo geometry, KHÔNG chỉ theo thẻ (layout div-based)
+    if (s.tag === "header" || (s.isTopBar && index <= 1)) role = "header";
+    else if (s.tag === "footer" || (index === lastIdx && s.hasCopyright && s.linkCount >= 3))
+      role = "footer";
     else if (sig.details >= 2 || (/faq|frequently asked|câu hỏi/i.test(s.heading))) role = "faq";
     else if (sig.priceHits >= 2 && s.cardCount >= 2) role = "pricing";
     else if (sig.quotes >= 1 || /testimonial|review|khách hàng nói|what .* say/i.test(s.heading)) role = "testimonial";
@@ -481,15 +575,59 @@ export async function scrapeDom(
  */
 export async function measureSectionColumns(page: Page): Promise<number[]> {
   return page.evaluate(() => {
-    // ---- chọn section giống scrapeDom ----
+    // ---- chọn section giống scrapeDom (PHẢI khớp để index align) ----
+    const vw = window.innerWidth;
+    const isVisible = (el: Element): boolean => {
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.visibility === "collapse" || cs.display === "none")
+        return false;
+      if (parseFloat(cs.opacity || "1") < 0.05) return false;
+      if (el.closest('[aria-hidden="true"]')) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return false;
+      if (r.bottom < 0 || r.right < 0) return false;
+      return true;
+    };
+    const copyRe = /(©|copyright|bản quyền|all rights reserved)/i;
     let sectionEls = Array.from(
-      document.querySelectorAll("header, main > section, body > section, section, footer")
+      document.querySelectorAll(
+        'header, [role="banner"], main > section, body > section, section, footer, [role="contentinfo"]'
+      )
+    ).filter((el, i, arr) => arr.indexOf(el) === i && isVisible(el));
+    const headerBar = (() => {
+      const cands = Array.from(document.querySelectorAll("div, nav")).filter((el) => {
+        if (!isVisible(el)) return false;
+        const r = el.getBoundingClientRect();
+        return (
+          r.top + window.scrollY < 140 && r.width >= vw * 0.8 &&
+          r.height >= 36 && r.height <= 170 && el.querySelectorAll("a").length >= 3
+        );
+      });
+      cands.sort((a, b) => {
+        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        return ra.top - rb.top || rb.width - ra.width;
+      });
+      return cands[0] ?? null;
+    })();
+    const hasHeaderLandmark = sectionEls.some(
+      (e) => e.tagName === "HEADER" || e.getAttribute("role") === "banner"
     );
-    sectionEls = sectionEls.filter((el, i, arr) => arr.indexOf(el) === i);
+    if (headerBar && !hasHeaderLandmark && !sectionEls.includes(headerBar)) sectionEls.unshift(headerBar);
+    if (!sectionEls.some((e) => e.tagName === "FOOTER")) {
+      const fcands = Array.from(document.querySelectorAll("div, footer")).filter((el) => {
+        if (!isVisible(el)) return false;
+        const r = el.getBoundingClientRect();
+        return r.width >= vw * 0.8 && r.height >= 80 &&
+          copyRe.test(el.textContent || "") && el.querySelectorAll("a").length >= 3;
+      });
+      const footerBar = fcands[fcands.length - 1];
+      if (footerBar && !sectionEls.includes(footerBar)) sectionEls.push(footerBar);
+    }
     if (sectionEls.filter((e) => e.tagName === "SECTION").length < 2) {
       const host = document.querySelector("main") ?? document.body;
       if (host) {
         for (const child of Array.from(host.children)) {
+          if (!isVisible(child)) continue;
           const r = child.getBoundingClientRect();
           if (r.height > 240 && r.width > 320 && !sectionEls.includes(child)) sectionEls.push(child);
         }

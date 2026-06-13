@@ -76,7 +76,10 @@ async function downloadImages(tree: ComponentTree, publicDir: string): Promise<I
   const map: ImageMap = new Map();
   const seen = new Set<string>();
   const candidates = tree.components
-    .flatMap((c) => c.data?.images ?? [])
+    .flatMap((c) => [
+      ...(c.data?.images ?? []),
+      ...((c.data?.cards ?? []).map((cd) => cd.image).filter((x): x is NonNullable<typeof x> => !!x)),
+    ])
     .filter((im) => /^https?:\/\//i.test(im.src) && im.width >= 80 && im.height >= 60)
     .sort((a, b) => b.width * b.height - a.width * a.height);
 
@@ -85,7 +88,7 @@ async function downloadImages(tree: ComponentTree, publicDir: string): Promise<I
     if (seen.has(im.src)) continue;
     seen.add(im.src);
     list.push(im);
-    if (list.length >= 12) break;
+    if (list.length >= 28) break;
   }
   if (!list.length) return map;
 
@@ -289,10 +292,14 @@ function renderComponent(
       );
 
     case "features": {
-      const cards = (d.cards.length ? d.cards : fallbackCards(3)).map((c2) => ({
-        heading: c2.heading || "Feature",
-        text: c2.text || "Short placeholder description of this feature or benefit.",
-      }));
+      const cards = (d.cards.length ? d.cards : fallbackCards(3)).map((c2) => {
+        const li = c2.image ? imgMap.get(c2.image.src) : null;
+        return {
+          heading: c2.heading || "Feature",
+          text: c2.text || "Short placeholder description of this feature or benefit.",
+          img: li ? li.file : "",
+        };
+      });
       return comp(
         c.name,
         `<section className="${pad}">
@@ -300,10 +307,15 @@ function renderComponent(
         ${d.heading ? `<h2 className="mb-10 text-center text-3xl font-bold">${esc(d.heading)}</h2>` : ""}
         <div className="grid ${gapClass(d.layout.gap)} ${gridCols(d.layout, cards.length)}">
           {items.map((item) => (
-            <div key={item.heading} className="${r} border border-[var(--color-border)] p-6">
-              <div className="${r} mb-4 h-10 w-10 bg-[var(--color-primary)]/10" />
-              <h3 className="text-lg font-semibold">{item.heading}</h3>
-              <p className="mt-2 text-sm opacity-70">{item.text}</p>
+            <div key={item.heading} className="overflow-hidden ${r} border border-[var(--color-border)]">
+              {item.img ? (
+                <img src={item.img} alt={item.heading} className="h-44 w-full object-cover" />
+              ) : null}
+              <div className="p-6">
+                {!item.img ? <div className="${r} mb-4 h-10 w-10 bg-[var(--color-primary)]/10" /> : null}
+                <h3 className="text-lg font-semibold">{item.heading}</h3>
+                <p className="mt-2 text-sm opacity-70">{item.text}</p>
+              </div>
             </div>
           ))}
         </div>

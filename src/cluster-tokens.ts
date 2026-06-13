@@ -297,12 +297,22 @@ export async function clusterTokens(
   const shadows = topKeys(raw.shadows, 3);
 
   // ---- layout ----
-  // containerMaxWidth = maxWidth của container BỊ GIỚI HẠN và RỘNG NHẤT (≈ container chính),
-  // không phải maxWidth phổ biến nhất (dễ trúng container con hẹp).
-  const constrained = raw.layout
-    .filter((l) => l.maxWidth && l.maxWidth !== "none" && /\dpx/.test(l.maxWidth))
-    .sort((a, b) => b.width - a.width);
-  const containerMaxWidth = constrained[0]?.maxWidth ?? "1280px";
+  // containerMaxWidth: gom ứng viên từ maxWidth + gridTemplateColumns 1-cột (= bề rộng nội dung),
+  // chỉ lấy trong [600,1400] để LOẠI full-bleed shell (≈viewport 1440) và container con quá hẹp.
+  // Chọn px phổ biến nhất (tie-break rộng hơn).
+  const widthFreq: Record<number, number> = {};
+  const addW = (px: number) => {
+    if (px >= 600 && px <= 1400) widthFreq[px] = (widthFreq[px] ?? 0) + 1;
+  };
+  for (const l of raw.layout) {
+    if (l.maxWidth && /\dpx/.test(l.maxWidth)) addW(parseInt(l.maxWidth, 10));
+    const gc = (l.gridTemplateColumns ?? "").trim();
+    if (/^\d+(\.\d+)?px$/.test(gc)) addW(parseInt(gc, 10)); // grid 1 cột = bề rộng nội dung
+  }
+  const bestW = Object.keys(widthFreq)
+    .map(Number)
+    .sort((a, b) => widthFreq[b] - widthFreq[a] || b - a)[0];
+  const containerMaxWidth = bestW ? `${bestW}px` : "1280px";
 
   const gridFreq: FreqMap = {};
   for (const l of raw.layout) {

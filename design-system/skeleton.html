@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Layout System — skeleton</title>
+  <meta name="description" content="Khung mẫu đầy đủ section của Layout System. Copy phần cần dùng.">
+  <link rel="stylesheet" href="base.css">
+</head>
+<body>
+
+  <!-- 1. HEADER -->
+  <header class="site-header">
+    <div class="container">
+      <nav class="nav">
+        <span class="brand">Brand</span>
+        <ul class="nav-links">
+          <li><a href="#features">Tính năng</a></li>
+          <li><a href="#pricing">Bảng giá</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#">Liên hệ</a></li>
+        </ul>
+        <div class="nav-actions">
+          <a href="#" class="btn btn--link">Đăng nhập</a>
+          <a href="#" class="btn btn--primary">Bắt đầu</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 2. HERO -->
+  <section class="section">
+    <div class="container">
+      <div class="hero center">
+        <h1>Tiêu đề chính rõ ràng, đúng trọng tâm</h1>
+        <p class="lead muted">Đoạn mô tả ngắn nói lợi ích cốt lõi cho người dùng. Một đến hai câu.</p>
+        <div class="actions">
+          <a href="#" class="btn btn--primary">Hành động chính</a>
+          <a href="#" class="btn btn--outline">Tìm hiểu thêm</a>
+        </div>
+      </div>
+      <img class="hero-img" src="https://picsum.photos/seed/hero/1120/560" alt="">
+    </div>
+  </section>
+
+  <!-- 3. FEATURES (media card) -->
+  <section class="section" id="features">
+    <div class="container">
+      <h2 class="center mb">Tính năng nổi bật</h2>
+      <div class="grid" style="--cols:3;--cols-md:2;--cols-sm:1">
+        <article class="card card--media">
+          <img class="card-img" src="https://picsum.photos/seed/f1/640/400" alt="">
+          <div class="card-body"><h3>Tiêu đề 1</h3><p class="muted">Mô tả ngắn cho tính năng hoặc lợi ích này.</p></div>
+        </article>
+        <article class="card card--media">
+          <img class="card-img" src="https://picsum.photos/seed/f2/640/400" alt="">
+          <div class="card-body"><h3>Tiêu đề 2</h3><p class="muted">Mô tả ngắn cho tính năng hoặc lợi ích này.</p></div>
+        </article>
+        <article class="card card--media">
+          <img class="card-img" src="https://picsum.photos/seed/f3/640/400" alt="">
+          <div class="card-body"><h3>Tiêu đề 3</h3><p class="muted">Mô tả ngắn cho tính năng hoặc lợi ích này.</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- features dạng icon (không ảnh) -->
+  <section class="section">
+    <div class="container">
+      <div class="grid" style="--cols:3;--cols-md:2;--cols-sm:1">
+        <article class="card"><div class="icon"></div><h3>Icon feature</h3><p class="muted">Dùng khi card thiên về icon, không có ảnh.</p></article>
+        <article class="card"><div class="icon"></div><h3>Icon feature</h3><p class="muted">Dùng khi card thiên về icon, không có ảnh.</p></article>
+        <article class="card"><div class="icon"></div><h3>Icon feature</h3><p class="muted">Dùng khi card thiên về icon, không có ảnh.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. SPLIT -->
+  <section class="section">
+    <div class="container split">
+      <div>
+        <h2>Khối text ↔ ảnh xen kẽ</h2>
+        <p class="muted">Mô tả dài hơn ở một bên, hình minh hoạ ở bên còn lại. Đảo chiều ở khối kế tiếp.</p>
+        <div class="actions"><a href="#" class="btn btn--primary">CTA</a></div>
+      </div>
+      <img class="split-img" src="https://picsum.photos/seed/split/720/520" alt="">
+    </div>
+  </section>
+
+  <!-- 5. STATS -->
+  <section class="section">
+    <div class="container">
+      <div class="grid center" style="--cols:4;--cols-md:2;--cols-sm:2">
+        <div><div class="stat">99%</div><p class="muted">Chỉ số A</p></div>
+        <div><div class="stat">2.5M</div><p class="muted">Chỉ số B</p></div>
+        <div><div class="stat">120+</div><p class="muted">Chỉ số C</p></div>
+        <div><div class="stat">4.9★</div><p class="muted">Chỉ số D</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. LOGOS -->
+  <section class="section center">
+    <div class="container">
+      <p class="eyebrow">Được tin dùng bởi</p>
+      <div class="logos">
+        <span class="logo"></span><span class="logo"></span><span class="logo"></span>
+        <span class="logo"></span><span class="logo"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. TESTIMONIAL / QUOTE -->
+  <section class="section">
+    <div class="container">
+      <h2 class="center mb">Khách hàng nói gì</h2>
+      <div class="grid" style="--cols:3;--cols-md:1;--cols-sm:1">
+        <figure class="card"><blockquote>“Trích dẫn ngắn của khách hàng về sản phẩm.”</blockquote><figcaption><span class="avatar"></span>Tên khách hàng</figcaption></figure>
+        <figure class="card"><blockquote>“Trích dẫn ngắn của khách hàng về sản phẩm.”</blockquote><figcaption><span class="avatar"></span>Tên khách hàng</figcaption></figure>
+        <figure class="card"><blockquote>“Trích dẫn ngắn của khách hàng về sản phẩm.”</blockquote><figcaption><span class="avatar"></span>Tên khách hàng</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. PRICING -->
+  <section class="section" id="pricing">
+    <div class="container">
+      <h2 class="center mb">Bảng giá</h2>
+      <div class="grid" style="--cols:3;--cols-md:1;--cols-sm:1">
+        <div class="card"><h3>Free</h3><p class="price">0₫<span class="muted">/tháng</span></p><p class="muted">Cho người mới bắt đầu.</p><a href="#" class="btn btn--outline full">Chọn</a></div>
+        <div class="card card--featured"><h3>Pro</h3><p class="price">199k<span class="muted">/tháng</span></p><p class="muted">Cho đội nhóm đang phát triển.</p><a href="#" class="btn btn--primary full">Chọn</a></div>
+        <div class="card"><h3>Business</h3><p class="price">499k<span class="muted">/tháng</span></p><p class="muted">Cho doanh nghiệp lớn.</p><a href="#" class="btn btn--outline full">Chọn</a></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. FAQ -->
+  <section class="section" id="faq">
+    <div class="container narrow">
+      <h2 class="center mb">Câu hỏi thường gặp</h2>
+      <div class="faq">
+        <details open><summary>Câu hỏi một?</summary><p class="muted">Trả lời ngắn gọn cho câu hỏi.</p></details>
+        <details><summary>Câu hỏi hai?</summary><p class="muted">Trả lời ngắn gọn cho câu hỏi.</p></details>
+        <details><summary>Câu hỏi ba?</summary><p class="muted">Trả lời ngắn gọn cho câu hỏi.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. CTA -->
+  <section class="section">
+    <div class="container">
+      <div class="cta-banner">
+        <h2>Sẵn sàng bắt đầu?</h2>
+        <p>Một câu kêu gọi hành động ngắn.</p>
+        <a href="#" class="btn btn--on-primary">Bắt đầu ngay</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11. FOOTER -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="grid" style="--cols:4;--cols-md:2;--cols-sm:2">
+        <div><h4>Sản phẩm</h4><ul><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li></ul></div>
+        <div><h4>Công ty</h4><ul><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li></ul></div>
+        <div><h4>Tài nguyên</h4><ul><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li></ul></div>
+        <div><h4>Pháp lý</h4><ul><li><a href="#">Liên kết</a></li><li><a href="#">Liên kết</a></li></ul></div>
+      </div>
+      <p class="copyright">© 2026 Brand. Rebuilt for reference.</p>
+    </div>
+  </footer>
+
+</body>
+</html>

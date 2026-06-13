@@ -134,15 +134,28 @@ function renderSection(c: ComponentNode, t: DesignTokens, meta: PageMetadata, im
 </section>`;
 
     case "features": {
-      const cards = (d.cards.length ? d.cards : fallback(3)).map((c2) => ({
-        heading: esc(c2.heading || "Feature"),
-        text: esc(c2.text || "Short placeholder description of this feature or benefit."),
-      }));
+      const cards = (d.cards.length ? d.cards : fallback(3)).map((c2) => {
+        const li = c2.image ? imgMap.get(c2.image.src) : null;
+        return {
+          heading: esc(c2.heading || "Feature"),
+          text: esc(c2.text || "Short placeholder description of this feature or benefit."),
+          img: li ? li.file : "",
+        };
+      });
       return `<section class="section"${padStyle(d)}>
   <div class="container">
     ${d.heading ? `<h2 class="center mb">${esc(d.heading)}</h2>` : ""}
     <div class="grid" style="${gridStyle(d, cards.length)}">
-      ${cards.map((c2) => `<div class="card"><div class="icon"></div><h3>${c2.heading}</h3><p class="muted">${c2.text}</p></div>`).join("\n      ")}
+      ${cards
+        .map(
+          (c2) =>
+            `<div class="card card--media">${
+              c2.img
+                ? `<img class="card-img" src="${c2.img}" alt="${c2.heading}" loading="lazy">`
+                : `<div class="icon"></div>`
+            }<div class="card-body"><h3>${c2.heading}</h3><p class="muted">${c2.text}</p></div></div>`
+        )
+        .join("\n      ")}
     </div>
   </div>
 </section>`;
@@ -374,10 +387,15 @@ h2 { font-size: clamp(1.75rem, 3vw, 2.25rem); font-weight: 700; }
 .grid { display: grid; gap: var(--gap, 1.5rem); grid-template-columns: repeat(var(--cols-sm, 1), minmax(0, 1fr)); }
 @media (min-width: 640px) { .grid { grid-template-columns: repeat(var(--cols-md, 2), minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .grid { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); } }
-.card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.5rem; }
+.card { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1.5rem; transition: box-shadow .18s ease, transform .18s ease; }
+.card:hover { box-shadow: 0 14px 32px -18px rgba(0,0,0,.32); transform: translateY(-2px); }
 .card--featured { border-color: var(--color-primary); box-shadow: 0 10px 30px -12px rgba(0,0,0,.25); }
 .card h3 { font-size: 1.125rem; }
 .card .icon { width: 2.5rem; height: 2.5rem; border-radius: var(--radius); background: color-mix(in srgb, var(--color-primary) 12%, transparent); margin-bottom: 1rem; }
+/* media card: ảnh tràn viền trên, nội dung padding dưới */
+.card--media { padding: 0; overflow: hidden; }
+.card--media .card-body { padding: 1.25rem 1.5rem; }
+.card-img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: color-mix(in srgb, var(--color-text) 6%, transparent); }
 .price { font-size: 2rem; font-weight: 800; margin: 1rem 0 0; }
 blockquote { margin: 0; font-size: .95rem; }
 figcaption { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; font-weight: 600; font-size: .9rem; }
